@@ -21,8 +21,12 @@ public static class Test {
 
         // Board board = Board.CreateBoardFromFEN("4k3/8/8/8/8/8/P3P3/4K3 w - - 0 1");                             // king and two pawns
         Board board = Board.CreateBoardFromFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");     // starting position
-
         Move move = bot.Think(board, timer);
+        Console.WriteLine(move);
+        
+        timer = new Timer(60000);
+        board.MakeMove(new Move("e2e4", board));
+        move = bot.Think(board, timer);
         Console.WriteLine(move);
         
     }
