@@ -1,45 +1,57 @@
 ﻿using ChessChallenge.API;
 using System;
 
+using System.Diagnostics; // #DEBUG
 public class MyBot : IChessBot
 {
     public bool DEBUG = false; // #DEBUG
-    public Random rng = new();
 
     public Timer timeControl;
-    public int MillisecondsAllocatedForSearch = 1000; 
-    public int maxDepth = 40;
-    public bool ContinueSearch = true;
+    public int MillisecondsAllocatedForSearch = 2000;
+    public int finalPly = 2;
+    public bool ContinueSearch;
     public Move moveToPlay;
+    public int positionsSearched = 0;
 
     public Move Think(Board board, Timer timer)
     {
         ContinueSearch = true;
         timeControl = timer;
-        int depth = 2;
-        while ( ContinueSearch || depth < maxDepth) {
-            moveToPlay = Search(board, depth);
-            depth += 2;
+        positionsSearched = 0;
+        while ( ContinueSearch ) {
+            int score = Search(board, finalPly);
+            finalPly += 1;
         }
-        Console.WriteLine($"Final Depth: {depth}, Time it took: {timer.MillisecondsElapsedThisTurn}"); // #DEBUG
+        Console.WriteLine($"Final Ply: {finalPly}, Searched: {positionsSearched}, Time it took: {timer.MillisecondsElapsedThisTurn}"); // #DEBUG
         return moveToPlay;
     }
 
-    Move Search(Board board, int depth) {  
-        Move[] moves = board.GetLegalMoves();
-        
-        foreach (Move m in moves) {
-            if (timeControl.MillisecondsElapsedThisTurn > MillisecondsAllocatedForSearch) {
-                ContinueSearch = false;
-                break;
-            }
-            board.MakeMove(m);
-            System.Threading.Thread.Sleep(50);          // #DEBUG
-            Search(board, depth - 1);
-            board.UndoMove(m);
+    int Search(Board board, int finalPly) { 
+        positionsSearched ++;
 
+        // Move[] moves = board.GetLegalMoves();            // -7 tokens,  ~7.5% slower
+        Span<Move> moves = stackalloc Move[256];
+        board.GetLegalMovesNonAlloc(ref moves);
+        
+        
+
+        int score = board.PlyCount;
+        if (board.PlyCount == finalPly) {
+            return score;
         }
 
-        return moves[rng.Next(moves.Length)];
+        foreach (Move m in moves) {
+            board.MakeMove(m);
+            score = Search(board, finalPly);
+            board.UndoMove(m);
+            if (!ContinueSearch) {
+                break;
+            }
+        }
+
+        if (timeControl.MillisecondsElapsedThisTurn>MillisecondsAllocatedForSearch) {
+            ContinueSearch = false;
+        } 
+        return score;
     }
 }
