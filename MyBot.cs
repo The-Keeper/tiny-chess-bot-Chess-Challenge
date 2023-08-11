@@ -1,77 +1,56 @@
 ﻿using ChessChallenge.API;
 using System;
+using System.Collections.Generic;
+using System.Linq;
 
-using System.Diagnostics; // #DEBUG
 public class MyBot : IChessBot {
     public bool DEBUG = false; // #DEBUG
 
-    public Timer timeControl;
-    public int MillisecondsAllocatedForSearch = 1000;
-    public int maxDepth = 60;   // Should be removed in optimised version 
+    Timer timeControl;
+    Move bestMove;
+    public int MillisecondsAllocatedForSearch = 100;
+
     public bool ContinueSearch;
-    public Move moveToPlay;
+
     public int positionsSearched = 0;       // #DEBUG
-    public int INF = 1000000000;
+
+    const int INF = 1000000000;
     int GamePly = 0;
 
+    public int scanDepth = 0;
+    public int maxDepth = 60;
+    public int scanCapturesDepth = 0;
+
     public Move Think(Board board, Timer timer) {
+        int perspective = board.IsWhiteToMove ? 1 : -1;
         ContinueSearch = true;
         timeControl = timer;
+
+        Move[] allMoves = board.GetLegalMoves();
+
+        int TotalNumberOfPieces = board.GetAllPieceLists()
+            .Aggregate(0, (sum, next) => sum + next.Count());
+        scanDepth = 2;
+
+        //  searchIsToContinue = true;
+        Move lastBestMove = allMoves[0];
+        positionsSearched = 0;
         GamePly = board.PlyCount;
-        positionsSearched = 0;             // #DEBUG
-        int depth = 0;
+
+        if (DEBUG) // #DEBUG
+            Console.WriteLine($"Ply: {GamePly}"); // #DEBUG
         while (ContinueSearch) {
-            Search(board, depth, board.IsWhiteToMove ? 1 : -1);
-            depth++;
-
-            // Depth termination is to be removed in optimised version
-            if (depth > maxDepth) {                
-                ContinueSearch = false;
-                depth -= 1;
+            Search(board, scanDepth, -INF, INF, perspective);
+            if (ContinueSearch) {
+                lastBestMove = bestMove;
             }
+            if (DEBUG) // #DEBUG
+                Console.WriteLine($"Scan depth: {scanDepth}, Searched:, {positionsSearched}, best move: {bestMove}, time: {timer.MillisecondsElapsedThisTurn}"); // #DEBUG
+            scanDepth += 1;
         }
-        Console.WriteLine($"Depth reached: {depth}, Searched: {positionsSearched}, Time it took: {timer.MillisecondsElapsedThisTurn}"); // #DEBUG
-        return moveToPlay;
+
+        return lastBestMove;
     }
-
-    /// <summary>
-    /// Recusive search function based on Negamax method.
-    /// </summary>
-    /// <param name="board">current state of the board.</param>
-    /// <param name="depth">depth to search to.</param>
-    /// <returns>Transient score of the given move.</returns>
-    int Search(Board board, int depth, int color) {
-        positionsSearched++;                                // #DEBUG
-
-        // Move[] moves = board.GetLegalMoves();            // -7 tokens,  ~7.5% slower
-        Span<Move> moves = stackalloc Move[256];
-        board.GetLegalMovesNonAlloc(ref moves);
-
-        if (depth == 0)
-            return Evaluate(board) * (board.IsWhiteToMove ? 1 : -1);  // sign depends of the side to move ;
-        
-        int score = board.IsDraw() ? 0 : -INF;
-
-        foreach (Move move in moves) {
-            board.MakeMove(move);
-            int childScore = -Search(board, depth - 1, -color);
-            board.UndoMove(move);
-            if (childScore>score) {
-                score = childScore;
-                if (board.PlyCount == GamePly)
-                    moveToPlay = move;
-            }
-            if (!ContinueSearch) {
-                break;
-            }
-        }
-
-        if (timeControl.MillisecondsElapsedThisTurn > MillisecondsAllocatedForSearch) {
-            ContinueSearch = false;
-        }
-        return score;
-    }
-
 
     // Piece values in centipawns: null, pawn, knight, bishop, rook, queen, king
     readonly static int[] pieceValues = { 0, 100, 320, 330, 500, 900, 20000 };
@@ -105,7 +84,107 @@ public class MyBot : IChessBot {
             score += pl[i].Count * pieceValues[pieceTypeIndex + 1] * isWhitePieceFactor;
         }
 
-        return score;
+        return score * (node.IsWhiteToMove ? 1 : -1);
+
+    }
+
+    Dictionary<int, Dictionary<Move, int>> moveScoreByPly = new(); 
+    public List<Move> OrderMoves(Board board, Move[] moves, int perspective) {
+        return moves.OrderByDescending(m => {
+            int PlyCount = board.PlyCount;
+            if (moveScoreByPly.ContainsKey(PlyCount) && moveScoreByPly[PlyCount].ContainsKey(m)) {
+                return moveScoreByPly[PlyCount][m] * perspective;
+            }
+            return (int)m.CapturePieceType;
+        }).ToList();
+    }
+
+
+    int Quiesce(Board node, int alpha, int beta) {
+        int stand_pat = Evaluate(node);
+        if (stand_pat >= beta)
+            return beta;
+        if (alpha < stand_pat)
+            alpha = stand_pat;
+
+        List<Move> moves = node.GetLegalMoves(true).ToList();
+
+        foreach (Move m in moves) {
+            node.MakeMove(m);
+            int score = -Quiesce(node, -beta, -alpha);
+            node.UndoMove(m);
+
+            if (score >= beta)
+                return beta;
+            if (score > alpha)
+                alpha = score;
+        }
+        return alpha;
+    }
+
+    int Search(Board node, int depth, int alpha, int beta, int color) {
+        if (!moveScoreByPly.ContainsKey(node.PlyCount))
+            moveScoreByPly.Add(node.PlyCount, new());
+
+        if (timeControl.MillisecondsElapsedThisTurn > MillisecondsAllocatedForSearch) {
+            ContinueSearch = false;
+        }
+
+        ulong zobrist = node.ZobristKey;
+        int score = 0;
+
+        positionsSearched++;                                // #DEBUG
+
+        // Move[] legalMoves = node.GetLegalMoves();            // -7 tokens,  ~7.5% slower
+        Span<Move> legalMoves = stackalloc Move[256];
+        node.GetLegalMovesNonAlloc(ref legalMoves);
+
+        List<Move> moves = OrderMoves(node, legalMoves.ToArray(), color);
+        int movesCount = legalMoves.Length;
+
+        if (movesCount == 0) {
+            return node.IsInCheckmate() ? -INF : 0;
+        }
+
+        if (depth == 0) {
+            //return Evaluate(node);
+            return Quiesce(node, alpha, beta);
+        }
+
+        int index = 0;
+
+        foreach (Move move in moves) {
+            if (!ContinueSearch) {
+                break;
+            }
+
+            node.MakeMove(move);
+            index++;
+            if (index == 1) {
+                score = -Search(node, depth - 1, -beta, -alpha, -color);
+            }
+            else {
+                score = -Search(node, depth - 1, -alpha - 1, -alpha, -color); // (* search with a null window *)
+                if (alpha < score && score < beta) {
+                    score = -Search(node, depth - 1, -beta, -score, -color); // (* if it failed high, do a full re-search *)
+                }
+            }
+            node.UndoMove(move);
+
+            // alpha = Math.Max(alpha, score);
+            if (score > alpha) {
+                alpha = score;
+                moveScoreByPly[node.PlyCount][move] = score;
+                if (node.PlyCount == GamePly)
+                    bestMove = move;
+            }
+
+            if (alpha >= beta) {
+                break; // (* beta cut-off *)
+            }
+        }
+
+        return alpha;
     }
 
 }
