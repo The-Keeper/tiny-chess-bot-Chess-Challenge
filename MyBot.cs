@@ -35,7 +35,7 @@ public class MyBot : IChessBot {
         if (board.GetPieceList(PieceType.Queen, true).Count == 0 && board.GetPieceList(PieceType.Queen, false).Count == 0 && TotalNumberOfPieces<10) {
             MillisecondsAllocatedForSearch = timer.MillisecondsRemaining/2;
         }        
-        MillisecondsAllocatedForSearch = 200;// #DEBUG
+
         scanDepth = 2;
 
         //  searchIsToContinue = true;
