@@ -8,7 +8,7 @@ public class MyBot : IChessBot {
 
     Timer timeControl;
     Move bestMove;
-    public int MillisecondsAllocatedForSearch = 100;
+    public int MillisecondsAllocatedForSearch = 600;
 
     public bool ContinueSearch;
 
@@ -28,14 +28,21 @@ public class MyBot : IChessBot {
 
         Move[] allMoves = board.GetLegalMoves();
 
+        MillisecondsAllocatedForSearch = Math.Min(timer.MillisecondsRemaining/2, timer.GameStartTimeMilliseconds/60);
         int TotalNumberOfPieces = board.GetAllPieceLists()
             .Aggregate(0, (sum, next) => sum + next.Count());
+
+        if (board.GetPieceList(PieceType.Queen, true).Count == 0 && board.GetPieceList(PieceType.Queen, false).Count == 0 && TotalNumberOfPieces<10) {
+            MillisecondsAllocatedForSearch = timer.MillisecondsRemaining/2;
+        }        
+        MillisecondsAllocatedForSearch = 200;// #DEBUG
         scanDepth = 2;
 
         //  searchIsToContinue = true;
-        Move lastBestMove = allMoves[0];
+        Move lastBestMove = bestMove = allMoves[0];
         positionsSearched = 0;
         GamePly = board.PlyCount;
+        
 
         if (DEBUG) // #DEBUG
             Console.WriteLine($"Ply: {GamePly}"); // #DEBUG
@@ -45,7 +52,7 @@ public class MyBot : IChessBot {
                 lastBestMove = bestMove;
             }
             if (DEBUG) // #DEBUG
-                Console.WriteLine($"Scan depth: {scanDepth}, Searched:, {positionsSearched}, best move: {bestMove}, time: {timer.MillisecondsElapsedThisTurn}"); // #DEBUG
+                Console.WriteLine($"Scan depth: {scanDepth}, Searched:, {positionsSearched}, best move: {bestMove}, Transposition Table Length: {TranspositionTable.Count}, time: {timer.MillisecondsElapsedThisTurn}"); // #DEBUG
             scanDepth += 1;
         }
 
@@ -163,16 +170,18 @@ public class MyBot : IChessBot {
 
     }
 
-    Dictionary<int, Dictionary<Move, int>> moveScoreByPly = new(); 
-    public List<Move> OrderMoves(Board board, Move[] moves, int perspective) {
-        return moves.OrderByDescending(m => {
-            int PlyCount = board.PlyCount;
-            if (moveScoreByPly.ContainsKey(PlyCount) && moveScoreByPly[PlyCount].ContainsKey(m)) {
-                return moveScoreByPly[PlyCount][m] * perspective;
-            }
-            return (int)m.CapturePieceType;
-        }).ToList();
-    }
+       struct BoardEval {
+           public Move bestMove;
+           public int score;
+        }
+        Dictionary<ulong, BoardEval> TranspositionTable = new();
+        
+        public List<Move> OrderMoves(Board board, Move[] moves, int perspective) {
+            ulong zobrist = board.ZobristKey;
+            return moves.OrderByDescending(m =>
+               (TranspositionTable.ContainsKey(zobrist) && TranspositionTable[zobrist].bestMove == m) ? INF : (int)m.CapturePieceType + (int)m.PromotionPieceType
+            ).ToList();
+        }
 
 
     int Quiesce(Board node, int alpha, int beta) {
@@ -198,9 +207,6 @@ public class MyBot : IChessBot {
     }
 
     int Search(Board node, int depth, int alpha, int beta, int color) {
-        if (!moveScoreByPly.ContainsKey(node.PlyCount))
-            moveScoreByPly.Add(node.PlyCount, new());
-
         if (timeControl.MillisecondsElapsedThisTurn > MillisecondsAllocatedForSearch) {
             ContinueSearch = false;
         }
@@ -215,9 +221,8 @@ public class MyBot : IChessBot {
         node.GetLegalMovesNonAlloc(ref legalMoves);
 
         List<Move> moves = OrderMoves(node, legalMoves.ToArray(), color);
-        int movesCount = legalMoves.Length;
 
-        if (movesCount == 0) {
+        if (legalMoves.Length == 0) {
             return node.IsInCheckmate() ? -INF : 0;
         }
 
@@ -249,7 +254,7 @@ public class MyBot : IChessBot {
             // alpha = Math.Max(alpha, score);
             if (score > alpha) {
                 alpha = score;
-                moveScoreByPly[node.PlyCount][move] = score;
+                TranspositionTable[zobrist] = new() {bestMove = move, score = score};
                 if (node.PlyCount == GamePly)
                     bestMove = move;
             }
