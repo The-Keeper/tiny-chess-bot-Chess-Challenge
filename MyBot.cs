@@ -52,6 +52,75 @@ public class MyBot : IChessBot {
         return lastBestMove;
     }
 
+    readonly static int[][][] pieceScores = new int[6 * 32]
+    { // pawn      
+ 0,  0,  0,  0,
+50, 50, 50, 50,
+10, 10, 20, 30,
+ 5,  5, 10, 25,
+ 0,  0,  0, 20,
+ 5, -5,-10,  0,
+ 5, 10, 10,-20,
+ 0,  0,  0,  0,
+//},{
+ // knight      
+-50,-40,-30,-30,
+-40,-20,  0,  0,
+-30,  0, 10, 15,
+-30,  5, 15, 20,
+-30,  0, 15, 20,
+-30,  5, 10, 15,
+-40,-20,  0,  5,
+-50,-40,-30,-30,
+//},{
+ // bishop 
+-20,-10,-10,-10,
+-10,  0,  0,  0,
+-10,  0,  5, 10,
+-10,  5,  5, 10,
+-10,  0, 10, 10,
+-10, 10, 10, 10,
+-10,  5,  0,  0,
+-20,-10,-10,-10,
+//},{
+
+ // rook
+  0,  0,  0,  0,
+  5, 10, 10, 10,
+ -5,  0,  0,  0,
+ -5,  0,  0,  0,
+ -5,  0,  0,  0,
+ -5,  0,  0,  0,
+ -5,  0,  0,  0,
+  0,  0,  0,  5,
+        //}
+//queen
+-20,-10,-10, -5,
+-10,  0,  0,  0,
+-10,  0,  5,  5,
+ -5,  0,  5,  5,
+  0,  0,  5,  5,
+-10,  5,  5,  5,
+-10,  0,  5,  0,
+-20,-10,-10, -5,
+
+//king middle game
+-30,-40,-40,-50,
+-30,-40,-40,-50,
+-30,-40,-40,-50,
+-30,-40,-40,-50,
+-20,-30,-30,-40,
+-10,-20,-20,-20,
+ 20, 20,  0,  0,
+ 20, 30, 10,  0,
+    }.Chunk(4)
+        .Select(a => a.Concat(a.Reverse()).ToArray()).ToArray() // concat
+        .Chunk(8)    //Split to pieces
+        .Select(a => new int[][] {
+        a.Select(b => b.Select(c => -c)).SelectMany(a => a).ToArray(), // reverse values for black
+        a.Reverse().SelectMany(a => a).ToArray()})                              // turn the board for white
+        .ToArray();
+
     // Piece values in centipawns: null, pawn, knight, bishop, rook, queen, king
     readonly static int[] pieceValues = { 0, 100, 320, 330, 500, 900, 20000 };
 
@@ -82,6 +151,12 @@ public class MyBot : IChessBot {
             int isWhitePieceFactor = pl[i].IsWhitePieceList ? 1 : -1;
             int pieceTypeIndex = i % 6;
             score += pl[i].Count * pieceValues[pieceTypeIndex + 1] * isWhitePieceFactor;
+
+            foreach (Piece piece in pl[i])
+            {
+                int sideIdx = piece.IsWhite ? 1 : 0;
+                score += pieceScores[pieceTypeIndex][sideIdx][piece.Square.Index];
+            }
         }
 
         return score * (node.IsWhiteToMove ? 1 : -1);
