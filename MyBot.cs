@@ -1,10 +1,11 @@
 ﻿using ChessChallenge.API;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 
 public class MyBot : IChessBot {
-    public bool DEBUG = false; // #DEBUG
+    public bool DEBUG = true; // #DEBUG
 
     Timer timeControl;
     Move bestMove;
@@ -39,17 +40,28 @@ public class MyBot : IChessBot {
         scanDepth = 2;
 
         //  searchIsToContinue = true;
+        Move previousLastBestMove = Move.NullMove;
+        int confidenceOfSearch = 0;
         Move lastBestMove = bestMove = allMoves[0];
         positionsSearched = 0;
         GamePly = board.PlyCount;
         
 
         if (DEBUG) // #DEBUG
-            Console.WriteLine($"Ply: {GamePly}"); // #DEBUG
+            Console.WriteLine($"Ply: {GamePly}, Board:\n{board}, Timer: {timer.MillisecondsRemaining}"); // #DEBUG
         while (ContinueSearch) {
             Search(board, scanDepth, -INF, INF, perspective);
             if (ContinueSearch) {
                 lastBestMove = bestMove;
+                if (previousLastBestMove == lastBestMove) {
+                    confidenceOfSearch ++;
+                    if (confidenceOfSearch == 3) {
+                        ContinueSearch = false;
+                    }
+                } else {
+                    previousLastBestMove = lastBestMove;
+                    confidenceOfSearch = 0;
+                }
             }
             if (DEBUG) // #DEBUG
                 Console.WriteLine($"Scan depth: {scanDepth}, Searched:, {positionsSearched}, best move: {bestMove}, Transposition Table Length: {TranspositionTable.Count}, time: {timer.MillisecondsElapsedThisTurn}"); // #DEBUG
@@ -171,15 +183,14 @@ public class MyBot : IChessBot {
     }
 
        struct BoardEval {
-           public Move bestMove;
-           public int score;
+           public Dictionary<Move, int> moves; // moves and their scores;
         }
         Dictionary<ulong, BoardEval> TranspositionTable = new();
         
         public List<Move> OrderMoves(Board board, Move[] moves, int perspective) {
             ulong zobrist = board.ZobristKey;
             return moves.OrderByDescending(m =>
-               (TranspositionTable.ContainsKey(zobrist) && TranspositionTable[zobrist].bestMove == m) ? INF : (int)m.CapturePieceType + (int)m.PromotionPieceType
+               (TranspositionTable.ContainsKey(zobrist) && TranspositionTable[zobrist].moves.ContainsKey(m)) ? TranspositionTable[zobrist].moves[m] + 8192 : (int)m.CapturePieceType + (int)m.PromotionPieceType
             ).ToList();
         }
 
@@ -212,7 +223,7 @@ public class MyBot : IChessBot {
         }
 
         ulong zobrist = node.ZobristKey;
-        int score = 0;
+        int score = -INF;
 
         positionsSearched++;                                // #DEBUG
 
@@ -222,14 +233,19 @@ public class MyBot : IChessBot {
 
         List<Move> moves = OrderMoves(node, legalMoves.ToArray(), color);
 
-        if (legalMoves.Length == 0) {
-            return node.IsInCheckmate() ? -INF : 0;
-        }
+        if (node.IsInCheckmate())
+            return -INF;
+            
+        if (node.IsDraw())
+            return 0;
 
         if (depth == 0) {
             //return Evaluate(node);
             return Quiesce(node, alpha, beta);
         }
+
+        if (!TranspositionTable.ContainsKey(zobrist))
+            TranspositionTable[zobrist] = new() {moves = new()};
 
         int index = 0;
 
@@ -254,7 +270,7 @@ public class MyBot : IChessBot {
             // alpha = Math.Max(alpha, score);
             if (score > alpha) {
                 alpha = score;
-                TranspositionTable[zobrist] = new() {bestMove = move, score = score};
+                TranspositionTable[zobrist].moves[move] = score;
                 if (node.PlyCount == GamePly)
                     bestMove = move;
             }
