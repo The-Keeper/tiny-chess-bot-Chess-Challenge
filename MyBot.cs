@@ -67,6 +67,8 @@ public class MyBot : IChessBot {
                 Console.WriteLine($"Scan depth: {scanDepth}, Searched:, {positionsSearched}, best move: {bestMove}, Transposition Table Length: {TranspositionTable.Count}, time: {timer.MillisecondsElapsedThisTurn}"); // #DEBUG
             scanDepth += 1;
         }
+        if (DEBUG) // #DEBUG
+            Console.WriteLine($"Moves: {string.Join(", ", TranspositionTable[board.ZobristKey].moves.OrderBy(m => m.Value).Select(m => $"{m.Key}: {m.Value}"))}"); // #DEBUG
 
         return lastBestMove;
     }
@@ -250,10 +252,6 @@ public class MyBot : IChessBot {
         int index = 0;
 
         foreach (Move move in moves) {
-            if (!ContinueSearch) {
-                break;
-            }
-
             node.MakeMove(move);
             index++;
             if (index == 1) {
@@ -275,7 +273,7 @@ public class MyBot : IChessBot {
                     bestMove = move;
             }
 
-            if (alpha >= beta) {
+            if (!ContinueSearch || alpha >= beta) {
                 break; // (* beta cut-off *)
             }
         }
