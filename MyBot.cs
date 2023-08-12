@@ -29,13 +29,7 @@ public class MyBot : IChessBot {
 
         Move[] allMoves = board.GetLegalMoves();
 
-        MillisecondsAllocatedForSearch = Math.Min(timer.MillisecondsRemaining/2, timer.GameStartTimeMilliseconds/60);
-        int TotalNumberOfPieces = board.GetAllPieceLists()
-            .Aggregate(0, (sum, next) => sum + next.Count());
-
-        if (board.GetPieceList(PieceType.Queen, true).Count == 0 && board.GetPieceList(PieceType.Queen, false).Count == 0 && TotalNumberOfPieces<10) {
-            MillisecondsAllocatedForSearch = timer.MillisecondsRemaining/2;
-        }        
+        MillisecondsAllocatedForSearch = Math.Min(timer.MillisecondsRemaining/20, timer.GameStartTimeMilliseconds/40);
 
         scanDepth = 2;
 
