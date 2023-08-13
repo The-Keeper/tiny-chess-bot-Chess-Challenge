@@ -5,7 +5,7 @@ using System.Collections.Generic;
 using System.Linq;
 
 public class MyBot : IChessBot {
-    public bool DEBUG = true; // #DEBUG
+    public bool DEBUG = false; // #DEBUG
 
     Timer timeControl;
     Move bestMove;
@@ -22,6 +22,8 @@ public class MyBot : IChessBot {
     public int maxDepth = 60;
     public int scanCapturesDepth = 0;
 
+    bool isEndGame = false;
+
     public Move Think(Board board, Timer timer) {
         int perspective = board.IsWhiteToMove ? 1 : -1;
         ContinueSearch = true;
@@ -29,7 +31,7 @@ public class MyBot : IChessBot {
 
         Move[] allMoves = board.GetLegalMoves();
 
-        MillisecondsAllocatedForSearch = Math.Min(timer.MillisecondsRemaining/20, timer.GameStartTimeMilliseconds/40);
+        MillisecondsAllocatedForSearch = Math.Min(timer.MillisecondsRemaining/20, timer.GameStartTimeMilliseconds/40+timer.IncrementMilliseconds);
 
         scanDepth = 2;
 
@@ -39,6 +41,13 @@ public class MyBot : IChessBot {
         Move lastBestMove = bestMove = allMoves[0];
         positionsSearched = 0;
         GamePly = board.PlyCount;
+
+        var pl = board.GetAllPieceLists();
+        if (board.IsWhiteToMove) {
+
+        }
+        isEndGame = pl[4].Count == 0 && pl[10].Count == 0 
+            && board.GetPieceList(PieceType.Pawn, !board.IsWhiteToMove).Any(p => board.IsWhiteToMove ? p.Square.Rank < 4 : p.Square.Rank > 3); // or if there are dangerous pawns
         
 
         if (DEBUG) // #DEBUG
@@ -145,7 +154,7 @@ public class MyBot : IChessBot {
     /// </summary>
     /// <param name="node">Current state of the board.</param>
     /// <returns>Approximated value of current position in centipawns.</returns>
-    public static int Evaluate(Board node) {
+    public int Evaluate(Board node) {
         // Based on Claude Shannon evaluation function :
 
         // f(p) = 200(K-K')
@@ -170,6 +179,10 @@ public class MyBot : IChessBot {
             foreach (Piece piece in pl[i])
             {
                 int sideIdx = piece.IsWhite ? 1 : 0;
+                if (isEndGame && piece.IsKing) {
+                    score += 40-30*(Math.Abs(piece.Square.Rank - (3+sideIdx)) + Math.Abs(piece.Square.File - (3+sideIdx)));
+                    continue;
+                }
                 score += pieceScores[pieceTypeIndex][sideIdx][piece.Square.Index];
             }
         }
