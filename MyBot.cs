@@ -1,5 +1,4 @@
 ﻿using ChessChallenge.API;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -31,7 +30,7 @@ public class MyBot : IChessBot {
 
         Move[] allMoves = board.GetLegalMoves();
 
-        MillisecondsAllocatedForSearch = Math.Min(timer.MillisecondsRemaining/20, timer.GameStartTimeMilliseconds/40+timer.IncrementMilliseconds);
+        MillisecondsAllocatedForSearch = timer.MillisecondsRemaining <  timer.GameStartTimeMilliseconds/3 ? timer.MillisecondsRemaining/20 : timer.MillisecondsRemaining/40+timer.IncrementMilliseconds;
 
         scanDepth = 2;
 
