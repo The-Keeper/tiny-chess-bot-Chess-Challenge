@@ -190,10 +190,11 @@ public class MyBot : IChessBot {
 
     }
 
-       struct BoardEval {
+        [Serializable]              // #DEBUG
+       public struct BoardEval {
            public Dictionary<Move, int> moves; // moves and their scores;
         }
-        Dictionary<ulong, BoardEval> TranspositionTable = new();
+       public Dictionary<ulong, BoardEval> TranspositionTable = new();
         
         public List<Move> OrderMoves(Board board, Move[] moves, int perspective) {
             ulong zobrist = board.ZobristKey;
